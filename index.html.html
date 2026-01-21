@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PDG INFRATECH – Petty Cash Record</title>
+
+<style>
+body{font-family:Segoe UI,Arial;background:#f4f6f8;padding:15px}
+.header,.box{background:#fff;padding:15px;border-radius:10px;margin-bottom:15px}
+.header{background:linear-gradient(135deg,#0b5ed7,#0b3c5d);color:#fff}
+input,select,button{width:100%;padding:10px;margin:6px 0;font-size:16px}
+button{border:none;border-radius:8px;font-weight:600;cursor:pointer}
+.edit{background:#f39c12;color:#fff}
+.delete{background:#e74c3c;color:#fff}
+.inv-del{background:#c0392b;color:#fff;font-size:11px;padding:4px 6px}
+.pdf{background:#8e44ad;color:#fff}
+.export{background:#2980b9;color:#fff}
+.backup{background:#16a085;color:#fff}
+.restore{background:#d35400;color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border:1px solid #ccc;padding:6px;text-align:center}
+th{background:#0b3c5d;color:#fff}
+.summary{display:flex;gap:10px;flex-wrap:wrap}
+.card{flex:1;background:#ecf0f1;padding:10px;text-align:center;border-left:6px solid #0b5ed7}
+.big{font-size:20px;font-weight:bold}
+.hidden{display:none}
+.inv-img{width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer}
+.footer{text-align:center;font-size:12px;color:#666;margin-top:20px}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+<h2>PDG INFRATECH – Petty Cash Record</h2>
+<p>Chikalthana MIDC, Chhatrapati Sambhajinagar – 431006</p>
+</div>
+
+<!-- LOGIN -->
+<div id="loginBox" class="box">
+<select id="role">
+<option value="">Select Role</option>
+<option value="admin">Admin</option>
+<option value="staff">Staff</option>
+</select>
+<input id="user" placeholder="User Name (optional)">
+<input type="password" id="pass" placeholder="Password">
+<button onclick="login()">Login</button>
+</div>
+
+<div id="app" class="hidden">
+
+<div class="box summary">
+<div class="card">Credit<br><span class="big">Rs. <span id="totalIn">0</span></span></div>
+<div class="card">Debit<br><span class="big">Rs. <span id="totalOut">0</span></span></div>
+<div class="card">Balance<br><span class="big">Rs. <span id="balance">0</span></span></div>
+</div>
+
+<div class="box">
+<select id="etype">
+<option value="in">Credit</option>
+<option value="out">Debit</option>
+</select>
+
+<select id="cat">
+<option value="">Category</option>
+<option>Office Expense</option>
+<option>Transport</option>
+<option>Labour</option>
+<option>Material</option>
+<option>Misc</option>
+</select>
+
+<input type="date" id="d">
+<input type="number" id="a" placeholder="Amount">
+<input id="r" placeholder="Remark">
+<input type="file" id="inv" accept="image/*">
+<button onclick="saveEntry()">Save Entry</button>
+</div>
+
+<div class="box">
+<button class="backup" onclick="takeBackup()">Take Backup</button>
+<input type="file" id="restoreFile" accept=".json">
+<button class="restore" onclick="restoreBackup()">Restore Backup</button>
+</div>
+
+<div class="box">
+<table>
+<thead>
+<tr>
+<th>Date</th><th>Category</th><th>Credit</th><th>Debit</th>
+<th>Remark</th><th>Invoice</th><th>Action</th>
+</tr>
+</thead>
+<tbody id="t"></tbody>
+</table>
+</div>
+
+</div>
+
+<script>
+let passwords = JSON.parse(localStorage.getItem("pdg_pass")) || {admin:"PDG@ADMIN",staff:"PDG@123"};
+let data = JSON.parse(localStorage.getItem("pdg_role_data")) || [];
+let currentRole="admin";
+
+function login(){
+  const r = role.value;
+  const p = pass.value;
+  if(!r || !p) return alert("Enter details");
+  if(p !== passwords[r]) return alert("Wrong password");
+  currentRole = r;
+  loginBox.classList.add("hidden");
+  app.classList.remove("hidden");
+  render();
+}
+
+function saveEntry(){
+ let o={
+  date:d.value,
+  role:currentRole,
+  category:cat.value||"",
+  in:etype.value==="in"?+a.value:0,
+  out:etype.value==="out"?+a.value:0,
+  remark:r.value,
+  invoice:""
+ };
+ let f=inv.files[0];
+ if(f){
+  let fr=new FileReader();
+  fr.onload=e=>{o.invoice=e.target.result;push(o)};
+  fr.readAsDataURL(f);
+ } else push(o);
+}
+
+function push(o){
+ data.push(o);
+ localStorage.setItem("pdg_role_data",JSON.stringify(data));
+ d.value=a.value=r.value=inv.value="";
+ render();
+}
+
+function render(){
+ let credit=0,debit=0;
+ t.innerHTML="";
+ data.filter(x=>x.role===currentRole).forEach((x,i)=>{
+  credit+=x.in; debit+=x.out;
+  t.innerHTML+=`
+<tr>
+<td>${x.date}</td>
+<td>${x.category}</td>
+<td>${x.in}</td>
+<td>${x.out}</td>
+<td>${x.remark}</td>
+<td>${x.invoice?`<img src="${x.invoice}" class="inv-img" onclick="openInvoice('${x.invoice}')">`:"-"}</td>
+<td><button class="delete" onclick="del(${i})">Delete</button></td>
+</tr>`;
+ });
+ totalIn.innerText=credit;
+ totalOut.innerText=debit;
+ balance.innerText=credit-debit;
+}
+
+function openInvoice(src){
+ document.body.innerHTML=`<img src="${src}" style="width:100%">`;
+}
+
+function del(i){
+ if(confirm("Delete?")){
+  data.splice(i,1);
+  localStorage.setItem("pdg_role_data",JSON.stringify(data));
+  render();
+ }
+}
+
+function takeBackup(){
+ let b={data,passwords};
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([JSON.stringify(b)],{type:"application/json"}));
+ a.download="PDG_PettyCash_Backup.json";
+ a.click();
+}
+
+function restoreBackup(){
+ let f=restoreFile.files[0];
+ if(!f) return;
+ let r=new FileReader();
+ r.onload=e=>{
+  let b=JSON.parse(e.target.result);
+  data=b.data||[];
+  passwords=b.passwords||passwords;
+  localStorage.setItem("pdg_role_data",JSON.stringify(data));
+  localStorage.setItem("pdg_pass",JSON.stringify(passwords));
+  render();
+  alert("Backup Restored");
+ };
+ r.readAsText(f);
+}
+</script>
+
+<div class="footer">
+All Rights Reserved © Pratik Joshi
+</div>
+
+</body>
+</html>
