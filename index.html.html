@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PDG INFRATECH – Petty Cash Record</title>
+
+<style>
+.pass{background:#34495e;color:#fff}
+body{font-family:Segoe UI,Arial;background:#f4f6f8;padding:20px}
+.header,.box{background:#fff;padding:15px;border-radius:10px;margin-bottom:15px}
+.header{background:linear-gradient(135deg,#0b5ed7,#0b3c5d);color:#fff}
+input,select,button{width:100%;padding:8px;margin:5px 0}
+button{border:none;border-radius:8px;font-weight:600;cursor:pointer}
+button:hover{opacity:.9}
+.edit{background:#f39c12;color:#fff}
+.delete{background:#e74c3c;color:#fff}
+.inv-del{background:#c0392b;color:#fff;font-size:11px;padding:3px 6px;margin-top:4px}
+.pdf{background:#8e44ad;color:#fff}
+.export{background:#2980b9;color:#fff}
+.backup{background:#16a085;color:#fff}
+.restore{background:#d35400;color:#fff}
+table{width:100%;border-collapse:collapse}
+th,td{border:1px solid #ccc;padding:6px;text-align:center}
+th{background:#0b3c5d;color:#fff}
+.summary{display:flex;gap:10px}
+.card{flex:1;background:#ecf0f1;padding:10px;text-align:center;border-left:6px solid #0b5ed7}
+.big{font-size:20px;font-weight:bold}
+.hidden{display:none}
+.inv-img{width:50px;height:50px;object-fit:cover;border:1px solid #ccc;border-radius:6px;cursor:pointer}
+.footer{text-align:center;font-size:12px;color:#666;margin-top:20px}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+<h2>PDG INFRATECH – Petty Cash Record</h2>
+<p>
+Plot No E-24/40 & 41, Chikalthana MIDC Industrial Area,<br>
+Chhatrapati Sambhajinagar – 431006
+</p>
+</div>
+
+<!-- LOGIN -->
+<div id="loginBox" class="box">
+<select id="role">
+<option value="">Select Role</option>
+<option value="admin">Admin</option>
+<option value="staff">Staff</option>
+</select>
+<input id="user" placeholder="User Name">
+<input type="password" id="pass" placeholder="Password">
+<button onclick="login()">Login</button>
+</div>
+
+<div id="app" class="hidden">
+
+<!-- DASHBOARD SUMMARY -->
+<div class="box summary">
+<div class="card">Credit<br><span class="big">Rs. <span id="totalIn">0</span></span></div>
+<div class="card">Debit<br><span class="big">Rs. <span id="totalOut">0</span></span></div>
+<div class="card">Balance<br><span class="big">Rs. <span id="balance">0</span></span></div>
+</div>
+
+<!-- ENTRY -->
+<div class="box">
+<select id="etype">
+<option value="in">Credit</option>
+<option value="out">Debit</option>
+</select>
+
+<select id="cat">
+<option value="">Select Category</option>
+<option>Office Expense</option>
+<option>Transport</option>
+<option>Labour</option>
+<option>Material</option>
+<option>Misc</option>
+</select>
+
+<input type="date" id="d">
+<input type="number" id="a" placeholder="Amount">
+<input id="r" placeholder="Remark">
+<input type="file" id="inv" accept="image/*">
+<button onclick="saveEntry()">Save / Update Entry</button>
+</div>
+
+<!-- REPORT -->
+<div class="box">
+<input type="date" id="pdfFrom">
+<input type="date" id="pdfTo">
+<button class="pdf" onclick="exportPDF()">Generate PDF</button>
+<button class="export" onclick="exportCSV()">Export Excel</button>
+</div>
+
+<!-- BACKUP / RESTORE -->
+<div class="box">
+<button class="backup" onclick="takeBackup()">Take Backup</button>
+<input type="file" id="restoreFile" accept=".json">
+<button class="restore" onclick="restoreBackup()">Restore Backup</button>
+</div>
+
+<!-- CHANGE PASSWORD -->
+<div class="box">
+  <h4>🔐 Change Password</h4>
+  <input type="password" id="oldPass" placeholder="Old Password">
+  <input type="password" id="newPass" placeholder="New Password">
+  <button class="pass" onclick="changePassword()">Change Password</button>
+</div>
+
+<!-- TABLE -->
+<div class="box">
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Category</th>
+<th>Credit</th>
+<th>Debit</th>
+<th>Remark</th>
+<th>Invoice</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody id="t"></tbody>
+</table>
+</div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+let passwords=JSON.parse(localStorage.getItem("pdg_pass"))||{admin:"PDG@ADMIN",staff:"PDG@123"};
+let data=JSON.parse(localStorage.getItem("pdg_role_data"))||[];
+let currentUser="",currentRole="",editIndex=-1;
+function changePassword(){
+ if(oldPass.value!==passwords[currentRole]){
+  alert("Old password incorrect");
+  return;
+ }
+ if(newPass.value.length<4){
+  alert("Password must be at least 4 characters");
+  return;
+ }
+ passwords[currentRole]=newPass.value;
+ localStorage.setItem("pdg_pass",JSON.stringify(passwords));
+ alert("Password changed successfully");
+ oldPass.value=newPass.value="";
+}
+
+function fmtDate(d){if(!d)return"";let[y,m,da]=d.split("-");return`${da}/${m}/${y}`;}
+
+function login(){
+ if(pass.value!==passwords[role.value])return alert("Wrong password");
+ currentUser=user.value||role.value;
+ currentRole=role.value;
+ loginBox.classList.add("hidden");
+ app.classList.remove("hidden");
+ render();
+}
+
+function saveEntry(){
+ let file=inv.files[0];
+ if(file){
+  let r1=new FileReader();
+  r1.onload=e=>finalSave(e.target.result);
+  r1.readAsDataURL(file);
+ } else finalSave("");
+}
+
+function finalSave(invoice){
+ let o={
+  date:d.value,
+  user:currentUser,
+  role:currentRole,
+  category:cat.value||"",
+  in:etype.value==="in"?+a.value:0,
+  out:etype.value==="out"?+a.value:0,
+  remark:r.value,
+  invoice:invoice
+ };
+ if(editIndex>-1)data[editIndex]=o; else data.push(o);
+ localStorage.setItem("pdg_role_data",JSON.stringify(data));
+ d.value=a.value=r.value=inv.value=cat.value="";
+ editIndex=-1;
+ render();
+}
+
+function render(){
+ let credit=0,debit=0;
+ t.innerHTML="";
+ data.filter(x=>x.user===currentUser&&x.role===currentRole)
+ .forEach((x,i)=>{
+  credit+=x.in; debit+=x.out;
+  t.innerHTML+=`
+<tr>
+<td>${fmtDate(x.date)}</td>
+<td>${x.category||"-"}</td>
+<td>${x.in}</td>
+<td>${x.out}</td>
+<td>${x.remark}</td>
+<td>
+${x.invoice?
+ `<img src="${x.invoice}" class="inv-img" onclick="window.open('${x.invoice}')"><br>
+ <button class="inv-del" onclick="deleteInvoice(${i})">Delete</button>`
+ :"-"}
+</td>
+<td>
+<button class="edit" onclick="editEntry(${i})">Edit</button>
+<button class="delete" onclick="deleteEntry(${i})">Delete</button>
+</td>
+</tr>`;
+ });
+ totalIn.innerText=credit;
+ totalOut.innerText=debit;
+ balance.innerText=credit-debit;
+}
+
+function deleteInvoice(i){
+ data[i].invoice="";
+ localStorage.setItem("pdg_role_data",JSON.stringify(data));
+ render();
+}
+
+function editEntry(i){
+ let x=data[i];
+ d.value=x.date; a.value=x.in||x.out; r.value=x.remark;
+ cat.value=x.category||""; etype.value=x.in>0?"in":"out";
+ editIndex=i;
+}
+
+function deleteEntry(i){
+ if(confirm("Delete entry?")){
+  data.splice(i,1);
+  localStorage.setItem("pdg_role_data",JSON.stringify(data));
+  render();
+ }
+}
+
+/* ===== PDF WITH PROPER TABLE MARGINS ===== */
+function exportPDF(){
+ const {jsPDF}=window.jspdf;
+ const doc=new jsPDF();
+
+ let rows=[],openC=0,openD=0,credit=0,debit=0;
+ let from=pdfFrom.value,to=pdfTo.value;
+
+ data.forEach(x=>{
+  if(x.user!==currentUser||x.role!==currentRole)return;
+
+  if(from && x.date<from){openC+=x.in;openD+=x.out;return;}
+  if(to && x.date>to)return;
+
+  credit+=x.in; debit+=x.out;
+  rows.push(x);
+ });
+
+ let opening=openC-openD;
+ let closing=opening+credit-debit;
+
+ doc.text("PDG INFRATECH – PETTY CASH REPORT",105,15,null,null,"center");
+
+ doc.autoTable({
+  startY:25,
+  margin:{left:14,right:14},
+  head:[["Opening Balance","Total Credit","Total Debit","Closing Balance"]],
+  body:[[ "Rs. "+opening,"Rs. "+credit,"Rs. "+debit,"Rs. "+closing ]]
+ });
+
+ doc.autoTable({
+  startY: doc.lastAutoTable.finalY+6,
+  margin:{left:14,right:14},
+  head:[["Date","Category","Credit","Debit","Remark","Invoice"]],
+  body:rows.map(x=>[
+   fmtDate(x.date),
+   x.category||"-",
+   "Rs. "+x.in,
+   "Rs. "+x.out,
+   x.remark,
+   x.invoice?"Yes":"No"
+  ])
+ });
+
+ doc.text("Prepared By : Admin",14,280);
+ doc.text("Approved By : Authorized Signatory",120,280);
+
+ doc.save("PDG_Petty_Cash_Report.pdf");
+}
+
+/* ===== BACKUP / RESTORE ===== */
+function takeBackup(){
+ let b={data,passwords};
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([JSON.stringify(b)],{type:"application/json"}));
+ a.download="PDG_PettyCash_Backup.json";
+ a.click();
+}
+
+function restoreBackup(){
+ let f=document.getElementById("restoreFile").files[0];
+ if(!f)return alert("Select backup file");
+ let r=new FileReader();
+ r.onload=e=>{
+  let b=JSON.parse(e.target.result);
+  data=b.data||[];
+  passwords=b.passwords||passwords;
+  localStorage.setItem("pdg_role_data",JSON.stringify(data));
+  localStorage.setItem("pdg_pass",JSON.stringify(passwords));
+  render();
+  alert("Backup restored successfully");
+ };
+ r.readAsText(f);
+}
+
+function exportCSV(){
+ let csv="Date,Credit,Debit,Remark\n";
+ data.filter(x=>x.user===currentUser&&x.role===currentRole)
+ .forEach(x=>csv+=`${fmtDate(x.date)},${x.in},${x.out},${x.remark}\n`);
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([csv]));
+ a.download="Petty_Cash.csv";
+ a.click();
+}
+</script>
+
+<div class="footer">
+All Rights Reserved © Pratik Joshi
+</div>
+
+</body>
+</html>
